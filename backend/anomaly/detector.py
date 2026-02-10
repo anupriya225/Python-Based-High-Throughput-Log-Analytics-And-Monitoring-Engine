@@ -1,36 +1,36 @@
-# anomaly/detector.py
-
+import pandas as pd
 import dask.dataframe as dd
 
-def detect_anomalies(log_df, z_threshold=3):
 
-    # Ensure timestamp is datetime
-    log_df['timestamp'] = dd.to_datetime(log_df['timestamp'])
+def detect_anomalies(log_df):
+    # Convert Dask DF → Pandas DF safely
+    pdf = log_df.compute()
 
-    # Filter ERROR logs
-    error_logs = log_df[log_df['level'] == 'ERROR']
+    # Ensure datetime
+    pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
 
-    # Count errors per minute
-    error_counts = (
-        error_logs
-        .set_index('timestamp')
-        .resample('1T')
+    # Set index
+    pdf = pdf.set_index("timestamp")
+
+    # Resample per minute
+    agg_df = (
+        pdf
+        .resample("1T")
         .size()
-        .rename('error_count')
-        .reset_index()
+        .to_frame(name="error_count")
     )
 
-    # Compute mean & std
-    mean = error_counts['error_count'].mean().compute()
-    std = error_counts['error_count'].std().compute()
+    # Z-score anomaly detection
+    mean = agg_df["error_count"].mean()
+    std = agg_df["error_count"].std()
 
-    # Z-score anomaly score
-    if std == 0:
-        error_counts['anomaly_score'] = 0
+    if std == 0 or pd.isna(std):
+        agg_df["z_score"] = 0
     else:
-        error_counts['anomaly_score'] = (error_counts['error_count'] - mean) / std
+        agg_df["z_score"] = (agg_df["error_count"] - mean) / std
 
-    # Mark anomalies
-    error_counts['is_anomaly'] = error_counts['anomaly_score'].abs() > z_threshold
+    anomalies = agg_df[agg_df["z_score"].abs() > 3]
 
-    return error_counts[error_counts['is_anomaly']]
+    anomalies = anomalies.reset_index()
+
+    return anomalies

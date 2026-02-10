@@ -1,33 +1,27 @@
 import smtplib
 from email.mime.text import MIMEText
 
-sender = "pemmaanupriya225@gmail.com"
-receiver = "gogulaavinash20@gmail.com"
-password = "mmsk yhfj asws ptlv"   # Gmail App Password
+SENDER = "pemmaanupriya225@gmail.com"
+PASSWORD = "mmsk yhfj asws ptlv"   # Gmail App Password
 
-print("creating email content")
 
-# create the email content
-message = MIMEText("Sending email using Python")
-message["Subject"] = "Test email from python"
-message["From"] = sender
-message["To"] = receiver
+def send_anomaly_email(to_email, anomaly):
+    subject = "🚨 Log Anomaly Detected"
+    body = f"""
+An anomaly has been detected in the log system.
 
-print("connecting to gmail smtp server....")
-server = smtplib.SMTP("smtp.gmail.com", 587)
+Timestamp   : {anomaly['timestamp']}
+Error Count : {anomaly['error_count']}
+Z-Score     : {anomaly['z_score']}
+"""
 
-print("starting tls encryption...")
-server.starttls()
+    message = MIMEText(body)
+    message["Subject"] = subject
+    message["From"] = SENDER
+    message["To"] = to_email
 
-print("logging in...")
-server.login(sender, password)
-
-print("sending email..")
-server.sendmail(sender, receiver, message.as_string())
-
-print("email sent successfully!...")
-
-print("closing server connection...")
-server.quit()
-
-print("program finished")
+    server = smtplib.SMTP("smtp.gmail.com", 587)
+    server.starttls()
+    server.login(SENDER, PASSWORD)
+    server.sendmail(SENDER, to_email, message.as_string())
+    server.quit()

@@ -1,14 +1,12 @@
 import time
-import dask.dataframe as dd
-    
+import os
+
 from backend.config.dask_config import start_dask
 from backend.processing.pipeline import build_pipeline
-from backend.anomaly.detector import detect_anomaly
+from backend.anomaly.detector import detect_anomalies
 from backend.config.email_config import send_anomaly_email
-import time
 
-
-ADMIN_EMAIL = "admin@example.com" 
+ADMIN_EMAIL = "admin@example.com"
 
 
 def main():
@@ -19,8 +17,13 @@ def main():
 
     start = time.time()
 
-    # Build log processing pipeline
-    log_df = build_pipeline("realtime_logs.csv")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    LOG_FILE = os.path.join(
+        BASE_DIR, "backend", "log_generator", "realtime_logs.csv"
+    )
+
+    # Build pipeline
+    log_df = build_pipeline(LOG_FILE)
 
     total_logs = log_df.count().compute()
     end = time.time()
@@ -28,13 +31,9 @@ def main():
     print("Total logs parsed:", total_logs)
     print("Time taken:", round(end - start, 2), "seconds")
 
-    print("\n Running anomaly detection...")
+    print("\nRunning anomaly detection...")
 
-    # Detect anomalies
-    anomalies_df = detect_anomaly(log_df)
-
-    # anomalies = anomalies_df.compute()
-    anomalies = anomalies_df
+    anomalies = detect_anomalies(log_df)
 
     if anomalies.empty:
         print("No anomalies detected")
@@ -45,13 +44,10 @@ def main():
             anomaly_data = {
                 "timestamp": row["timestamp"],
                 "error_count": row["error_count"],
-                "z_score": row["z_score"]
+                "z_score": row["z_score"],
             }
 
-            send_anomaly_email(
-                to_email=ADMIN_EMAIL,
-                anomaly=anomaly_data
-            )
+            send_anomaly_email(ADMIN_EMAIL, anomaly_data)
 
             print(
                 f"📧 Alert sent | Time: {row['timestamp']} | "
