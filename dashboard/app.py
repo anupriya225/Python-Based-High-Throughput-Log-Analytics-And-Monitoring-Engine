@@ -4,100 +4,103 @@ import os
 import sys
 import pandas as pd
 
+# ---------------- PATH SETUP ----------------
 root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if root_path not in sys.path:
     sys.path.insert(0, root_path)
 
+# ---------------- IMPORT BACKEND MODULES ----------------
 try:
     from backend.processing.pipeline import build_pipeline
-    from backend.anomaly.detector import detect_anomaly
+    from backend.anomaly.detector import detect_anomalies
 except ImportError as e:
-    st.error(f"Import Error: {e}. Ensure you are running from the root directory.")
+    st.error(f"Import Error: {e}")
     st.stop()
 
-# Page configuration
-st.set_page_config(page_title="Log Analytics Engine", layout="wide")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Log Analytics Engine",
+    layout="wide"
+)
 
 st.title("Python Based High Throughput Log Analytics Monitoring Engine")
 
-# Sidebar Settings
+# ---------------- SIDEBAR ----------------
 st.sidebar.header("Settings")
-log_file_path = st.sidebar.text_input("Log File Path", value="realtime_logs.csv")
 
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Log CSV File",
+    type=["csv"]
+)
 
 if st.sidebar.button("Refresh Dashboard"):
     st.rerun()
 
+# ---------------- MAIN LOGIC ----------------
+if uploaded_file is None:
+    st.info("👈 Please upload a log CSV file to view the dashboard.")
+    st.stop()
 
 try:
-    
-    log_df_dask = build_pipeline(log_file_path)
-    
-    log_data = log_df_dask.compute() 
+    # Build pipeline
+    log_df_dask = build_pipeline(uploaded_file)
 
-    
-    result = detect_anomaly(log_df_dask)
+    # Convert to pandas
+    log_data = log_df_dask.compute()
 
-    
-    if hasattr(result, 'compute'):
-        anomaly_df = result.compute()
-    else:
-        anomaly_df = result
+    # Detect anomalies
+    result = detect_anomalies(log_df_dask)
+    anomaly_df = result.compute() if hasattr(result, "compute") else result
 
-    # --- VISUALIZATIONS ---
-
+    # ---------------- VISUALIZATIONS ----------------
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Log Level Distribution")
-        
+
         if not log_data.empty:
-            level_counts = log_data['level'].value_counts().reset_index()
-            level_counts.columns = ['level', 'count']
+            level_counts = log_data["level"].value_counts().reset_index()
+            level_counts.columns = ["level", "count"]
+
             fig_pie = px.pie(
-                level_counts, 
-                values='count', 
-                names='level', 
-                title="Distribution of Log Levels",
-                color='level',
-                color_discrete_map={'ERROR': 'red', 'INFO': 'blue', 'WARN': 'orange', 'DEBUG': 'green'}
+                level_counts,
+                values="count",
+                names="level",
+                title="Distribution of Log Levels"
             )
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("No log data available for pie chart.")
+            st.warning("No log data available.")
 
     with col2:
         st.subheader("Log Levels Over Time")
-        
+
         if not log_data.empty:
-            
             fig_time = px.line(
-                log_data.sort_values("timestamp"), 
-                x="timestamp", 
-                y="level", 
-                title="Log Level Timeline",
-                color_discrete_sequence=["red"] if "ERROR" in log_data['level'].values else ["blue"]
+                log_data.sort_values("timestamp"),
+                x="timestamp",
+                y="level",
+                title="Log Level Timeline"
             )
             st.plotly_chart(fig_time, use_container_width=True)
 
-    # --- ANOMALY STATUS MESSAGE ---
+    # ---------------- STATUS & ALERTS ----------------
     st.divider()
+
     total_logs = len(log_data)
-    error_logs_count = len(log_data[log_data['level'] == 'ERROR'])
+    error_logs_count = len(log_data[log_data["level"] == "ERROR"])
     error_percentage = (error_logs_count / total_logs) * 100 if total_logs > 0 else 0
 
-# Updated Status Message Logic
     if not anomaly_df.empty or error_percentage > 90:
-        st.error(f"ALERT: Critical Issues Detected!")
+        st.error("🚨 ALERT: Critical Issues Detected!")
         if error_percentage > 90:
-            st.warning(f"Extremely high error rate detected: {error_percentage:.1f}%")
+            st.warning(f"High error rate detected: {error_percentage:.2f}%")
     else:
-        st.success("System Stable: No statistical anomalies detected.")
-        
-        if st.checkbox("Show raw processed log summary"):
-            st.dataframe(log_data.tail(20), use_container_width=True)
+        st.success("✅ System Stable: No anomalies detected")
 
-except FileNotFoundError:
-    st.error(f"File not found: {log_file_path}. Please check the path.")
+    # ---------------- RAW DATA ----------------
+    if st.checkbox("Show raw processed log data"):
+        st.dataframe(log_data.tail(20), use_container_width=True)
+
 except Exception as e:
-    st.error(f"An error occurred: {e}")
+    st.error(f"Unexpected error occurred: {e}")
